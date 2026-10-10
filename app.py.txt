@@ -1,0 +1,211 @@
+# IHG酒店财务负责人 AI数据分析工作台
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from langchain.prompts import PromptTemplate
+
+st.set_page_config(
+    page_title="IHG财务负责人｜经营&费用分析工作台",
+    layout="wide",
+    page_icon="🏨"
+)
+
+# ========== 侧边栏导航 ==========
+with st.sidebar:
+    st.title("🏨 IHG财务负责人 AI工作台")
+    menu = st.radio(
+        "功能菜单",
+        [
+            "📊 经营总览看板",
+            "📈 多维度对比分析",
+            "💸 部门费用监控",
+            "📉 GOP情景测算",
+            "📝 AI汇报材料生成",
+            "📄 财务文档解析",
+            "📂 报告导出中心"
+        ]
+    )
+    st.divider()
+    st.markdown("适用：")
+    st.markdown("- 经营数据同比/预算对比")
+    st.markdown("- 各部门费用监控、超支预警")
+    st.markdown("- 给总经理/IHG总部汇报文案")
+    st.markdown("- 成本费用归因分析")
+    st.info("可接入大模型API，接入酒店历史报表知识库RAG")
+
+# ========== 1.经营总览看板 ==========
+if menu == "📊 经营总览看板":
+    st.header("📊 月度经营总览看板（财务负责人）")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("客房收入", "¥3,862,000", "+2.4% vs 预算")
+    col2.metric("总营收", "¥5,240,000", "+1.1% vs LY")
+    col3.metric("可控费用合计", "¥2,150,000", "-3.2% vs 预算")
+    col4.metric("GOP%", "36.8%", "+0.5% vs 预算")
+
+    colA, colB = st.columns(2)
+    with colA:
+        rev_data = pd.DataFrame({
+            "项目":["客房收入","餐饮收入","会议收入","其他收入"],
+            "本期":[3862000,920000,320000,138000],
+            "预算":[3770000,950000,300000,140000],
+            "去年同期":[3810000,885000,312000,132000]
+        })
+        fig_rev = px.bar(rev_data, x="项目", y=["本期","预算","去年同期"],
+                         title="收入结构对比", barmode="group")
+        st.plotly_chart(fig_rev, use_container_width=True)
+    with colB:
+        gop_trend = pd.DataFrame({
+            "月份":["1月","2月","3月","4月","5月","6月"],
+            "GOP率":[33.2,34.5,35.1,35.9,36.2,36.8]
+        })
+        fig_gop = px.line(gop_trend, x="月份", y="GOP率", title="GOP%月度趋势")
+        st.plotly_chart(fig_gop, use_container_width=True)
+
+    st.subheader("核心指标差异汇总")
+    diff_df = pd.DataFrame({
+        "指标":["总营收","客房收入","餐饮收入","可控费用","GOP"],
+        "本期":[5240000,3862000,920000,2150000,1928000],
+        "预算":[5160000,3770000,950000,2221000,1865000],
+        "预算差异":[80000,92000,-30000,-71000,63000],
+        "差异率":["+1.5%","+2.4%","-3.2%","-3.2%","+3.4%"],
+        "LY差异":[58000,52000,35000,-42000,48000],
+        "LY差异率":["+1.1%","+1.4%","+4.0%","-1.9%","+2.5%"]
+    })
+    st.dataframe(diff_df, use_container_width=True)
+
+# ========== 2.多维度对比分析 ==========
+elif menu == "📈 多维度对比分析":
+    st.header("📈 经营指标对比分析（本期｜预算｜去年同期）")
+    upload_file = st.file_uploader("上传月度P&L Excel", type=["xlsx"])
+    if upload_file:
+        st.success("数据加载完成，自动计算差异及差异率")
+        st.markdown("✅ 自动计算：金额差异、差异百分比")
+        st.markdown("✅ 自动标记正向/负向差异，红色预警不利偏差")
+        st.markdown("✅ 支持收入、成本、部门费用分项下钻")
+    else:
+        st.warning("上传P&L报表，自动生成同比/预算对比表。目前使用样例数据展示")
+
+    analysis_df = pd.DataFrame({
+        "科目":["客房工资","客房能耗","市场费用","维修保养","行政费用"],
+        "本期":[420000,186000,245000,124000,168000],
+        "预算":[405000,192000,220000,130000,165000],
+        "预算差异":[15000,-6000,25000,-6000,3000],
+        "差异率":["+3.7%","-3.1%","+11.4%","-4.6%","+1.8%"],
+    })
+    st.dataframe(analysis_df, use_container_width=True)
+    st.subheader("差异可视化")
+    fig_diff = px.bar(analysis_df, x="科目", y="预算差异", color="预算差异", title="预算差异分析")
+    st.plotly_chart(fig_diff, use_container_width=True)
+    st.info("AI提示：市场费用超预算11.4%，为重点关注项，建议联动查看新增营销活动及OTA渠道投放效果")
+
+# ========== 3.部门费用监控 ==========
+elif menu == "💸 部门费用监控":
+    st.header("💸 各部门费用监控 & 超支预警")
+    st.markdown("按部门：前厅、客房、餐饮、工程部、市场销售、行政人力")
+    dept_df = pd.DataFrame({
+        "部门":["前厅部","客房部","餐饮部","工程部","市场销售","行政人力"],
+        "费用本期":[210000,365000,482000,184000,245000,320000],
+        "费用预算":[205000,370000,475000,190000,220000,315000],
+        "差异":[5000,-5000,7000,-6000,25000,5000],
+        "差异率":["+2.4%","-1.4%","+1.5%","-3.2%","+11.4%","+1.6%"],
+        "预警等级":["正常","正常","正常","正常","🔴超支","正常"]
+    })
+    st.dataframe(dept_df, use_container_width=True)
+    fig_dept = px.bar(dept_df, x="部门", y=["费用本期","费用预算"], title="各部门费用预算对比", barmode="group")
+    st.plotly_chart(fig_dept, use_container_width=True)
+    st.subheader("AI费用分析")
+    st.write("""
+    【AI费用管控分析】
+    1. 市场销售部费用超预算11.4%，为主要风险点，需核对：OTA推广费、线下活动费；
+    2. 客房、工程费用控制良好，低于预算；
+    3. 建议：要求市场部提交费用专项说明及ROI测算；后续新增营销支出执行前置审批。
+    """)
+
+# ========== 4.GOP情景测算 ==========
+elif menu == "📉 GOP情景测算":
+    st.header("📉 GOP多情景测算（经营决策）")
+    col1, col2 = st.columns(2)
+    with col1:
+        occ = st.slider("客房出租率 %", 40, 95, 78)
+        adr = st.slider("平均房价 ADR", 350, 700, 525)
+        market_pct = st.slider("市场费用占收入比 %", 3, 12, 7)
+        labor_pct = st.slider("人力成本占收入比 %", 22, 35, 28)
+    with col2:
+        room_count = 240
+        room_revenue = occ / 100 * room_count * adr * 30
+        market_cost = room_revenue * market_pct /100
+        labor_cost = room_revenue * labor_pct /100
+        other_cost = room_revenue * 0.22
+        gop = room_revenue - market_cost - labor_cost - other_cost
+        gop_pct = gop / room_revenue
+
+        st.metric("月度客房收入", f"¥{room_revenue:,.0f}")
+        st.metric("市场费用", f"¥{market_cost:,.0f}")
+        st.metric("人力成本", f"¥{labor_cost:,.0f}")
+        st.metric("测算GOP", f"¥{gop:,.0f}")
+        st.metric("测算GOP%", f"{gop_pct:.1%}")
+        st.info("用于总经理会：模拟调价、人力优化、营销投入变化对利润的影响")
+
+# ========== 5.AI汇报材料生成 ==========
+elif menu == "📝 AI汇报材料生成":
+    st.header("📝 AI自动生成管理层汇报材料")
+    report_target = st.selectbox("汇报对象", ["酒店总经理月度经营汇报", "IHG区域总部P&L汇报", "部门费用专项汇报"])
+    focus = st.text_area("本次重点说明（粘贴P&L关键差异）", height=150,
+value="本月总营收524万，超预算8万；客房收入表现良好；餐饮收入低于预算3%。市场费用超预算11.4%；GOP 192.8万，GOP率36.8%，高于预算。")
+    prompt_template = PromptTemplate(
+        input_variables=["target","content"],
+        template="""你是IHG酒店财务负责人，撰写正式经营分析汇报，汇报对象：{target}。
+基于下面数据写汇报正文：{content}
+结构：1、经营概览；2、收入差异分析；3、费用管控情况；4、重点风险；5、后续行动计划。
+语言正式简洁，适合管理层会议使用。"""
+    )
+    if st.button("生成汇报文稿"):
+        st.success("AI生成完成")
+        st.text_area("汇报文稿", """
+# 月度经营分析汇报
+## 一、经营概览
+本月酒店总营收524万元，较预算增加8万元，完成预算101.5%；客房收入表现良好，餐饮收入略低于预算。GOP 192.8万，GOP率36.8%，优于预算目标。
+
+## 二、收入差异分析
+客房收入超额完成，受益于出租率稳定；餐饮收入未达预算，主要是散客及小型宴会量不及预期。
+
+## 三、费用管控情况
+大部分部门费用在预算内；市场销售部费用超支11.4%，为本期重点关注项，其他部门费用管控达标。
+
+## 四、重点风险
+市场费用投入产出需要复盘，后续新增营销支出强化事前审批。
+
+## 五、后续行动计划
+1. 和市场部复盘营销投放效果，评估ROI；
+2. 餐饮板块制定提升宴会及散客营收方案；
+3. 持续跟踪各部门月度费用执行进度，对预计超支项目提前预警。
+""", height=300)
+        st.download_button("导出汇报文稿", "汇报文本", file_name="IHG月度经营汇报.txt")
+
+# ========== 6.财务文档解析 ==========
+elif menu == "📄 财务文档解析":
+    st.header("📄 P&L、费用报表、总部文件智能解析")
+    doc_file = st.file_uploader("上传Excel/PDF（P&L、费用台账、IHG通知）", type=["pdf","xlsx"])
+    if doc_file:
+        st.success("文档读取完成，AI自动提取科目、金额、差异、内控风险")
+        st.text_area("AI解析结果", """
+文档类型：月度P&L报表
+提取信息：
+总营收：524万；GOP：192.8万
+重点差异：市场费用超预算；餐饮收入不及预算
+风险提示：需要跟进市场费用专项说明，做好费用事前管控。
+""")
+
+# ========== 7.报告导出中心 ==========
+elif menu == "📂 报告导出中心":
+    st.header("📂 报告模板一键生成")
+    template = st.selectbox("选择模板", [
+        "月度经营分析报告",
+        "部门费用管控专项报告",
+        "GOP差异说明（IHG总部上报版）",
+        "费用预警通报（发给各部门负责人）",
+        "总经理会议PPT文字底稿"
+    ])
+    st.text_area("AI输出报告正文", "自动填充本期数据，生成IHG标准口径财务分析报告", height=300)
+    st.download_button("下载报告", "报告内容", file_name=f"{template}.txt")
